@@ -74,6 +74,13 @@ def main(args):
         coordinate_units=sl.UNIT.METER,
         coordinate_system=sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
     )
+    #init.depth_maximum_distance = 2 # Max distance in meters
+
+    # Enable Positional tracking (mandatory for object detection)
+    #positional_tracking_parameters = sl.PositionalTrackingParameters()
+    # If the camera is static, uncomment the following line to have better performances
+    #positional_tracking_parameters.set_as_static = True
+
     zed = sl.Camera()
     status = zed.open(init)
     if status != sl.ERROR_CODE.SUCCESS:
@@ -81,8 +88,8 @@ def main(args):
         exit()
 
     res = sl.Resolution()
-    res.width = 720
-    res.height = 404
+    res.width = 1280
+    res.height = 720
 
     camera_model = zed.get_camera_information().camera_model
     camera_params = zed.get_camera_information().camera_configuration.calibration_parameters
@@ -91,8 +98,12 @@ def main(args):
     viewer = gl.GLViewer()
     viewer.init(1, sys.argv, camera_model, res)
 
+    img_res_w = zed.get_camera_information().camera_resolution.width
+    img_res_h = zed.get_camera_information().camera_resolution.height
+
     point_cloud = sl.Mat(res.width, res.height, sl.MAT_TYPE.F32_C4, sl.MEM.CPU)
-    img_left = sl.Mat(zed.get_camera_information().camera_resolution.width, zed.get_camera_information().camera_resolution.height, sl.MAT_TYPE.U8_C4)
+    img_left = sl.Mat(img_res_w, img_res_h, sl.MAT_TYPE.U8_C4)
+    #quit()
 
     save_i = 0
     while viewer.is_available():
@@ -112,11 +123,14 @@ def main(args):
                     os.makedirs(args.save_dir)
                     params_path = os.path.join(args.save_dir, "cam_params.json")
                     intrinsics = save_intrinsics(camera_params, save_path=params_path)
+                data_dir = os.path.join(args.save_dir, f"data_{save_i}")
+                if not os.path.exists(data_dir):
+                    os.makedirs(data_dir)
         
                 # Save point cloud
-                point_cloud_to_save = sl.Mat();
+                point_cloud_to_save = sl.Mat(res.width, res.height, sl.MAT_TYPE.F32_C4, sl.MEM.CPU);
                 zed.retrieve_measure(point_cloud_to_save, sl.MEASURE.XYZRGBA, sl.MEM.CPU)
-                pcd_path = os.path.join(args.save_dir, f"pointcloud_{save_i}.ply")
+                pcd_path = os.path.join(data_dir, f"pointcloud.ply")
                 err = point_cloud_to_save.write(pcd_path)
                 if(err == sl.ERROR_CODE.SUCCESS):
                     print("point cloud saved")
@@ -124,20 +138,21 @@ def main(args):
                     print("the point cloud has not been saved")
 
                 # Save left and right rgb images
-                img_left_to_save = sl.Mat();
-                img_right_to_save = sl.Mat();
+                img_left_to_save = sl.Mat(img_res_w, img_res_h, sl.MAT_TYPE.U8_C4);
+                img_right_to_save = sl.Mat(img_res_w, img_res_h, sl.MAT_TYPE.U8_C4);
                 zed.retrieve_image(img_left_to_save, sl.VIEW.LEFT, resolution=res)
                 zed.retrieve_image(img_right_to_save, sl.VIEW.RIGHT, resolution=res)
-                img_left_path = os.path.join(args.save_dir, f"img_left_{save_i}.png")
-                img_right_path = os.path.join(args.save_dir, f"img_right_{save_i}.png")
+                img_left_path = os.path.join(data_dir, f"img_left.png")
+                img_right_path = os.path.join(data_dir, f"img_right.png")
                 img_left_to_save.write(img_left_path)
                 img_right_to_save.write(img_right_path)
     
                 # Save depth image as array
-                depth_img = sl.Mat()
+                depth_img = sl.Mat(img_res_w, img_res_h, sl.MAT_TYPE.F32_C1)
                 zed.retrieve_measure(depth_img, sl.MEASURE.DEPTH)
                 depth_arr = depth_img.get_data()
-                depth_path = os.path.join(args.save_dir, f"depth_{save_i}.npy")
+                print(depth_arr.shape)
+                depth_path = os.path.join(data_dir, f"depth.npy")
                 np.save(depth_path, depth_arr)
             
                 save_i += 1   
