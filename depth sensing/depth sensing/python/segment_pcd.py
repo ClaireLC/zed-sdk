@@ -38,6 +38,7 @@ def main(args):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(seg_points)
     pcd.colors = o3d.utility.Vector3dVector(seg_colors)
+    pcd.remove_non_finite_points()
     vis = o3d.visualization.Visualizer()
     vis.create_window()
     opt = vis.get_render_option()
@@ -47,6 +48,15 @@ def main(args):
     vis.update_renderer()
     vis.run()
     vis.destroy_window()
+
+    # Save segmented pcd
+    seg_pcd_path = os.path.join(args.data_dir, "seg_pointcloud.ply")
+    o3d.io.write_point_cloud(seg_pcd_path, pcd)
+    # Save object mask
+    mask_path = os.path.join(args.data_dir, "mask.npy")
+    np.save(mask_path, mask)
+
+    print("Saved mask and pointcloud")
 
 
 
