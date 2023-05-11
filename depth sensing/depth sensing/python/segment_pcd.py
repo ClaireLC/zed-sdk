@@ -7,22 +7,45 @@ import os
 import torch
 import numpy as np
 import json
+import time
 
-os.environ['DISPLAY'] = ':1'
+import mmt.stereo_inference.python.simple_inference as stereo_to_depth
+
 
 def main(args):
 
-    # Open img
-    img_path = os.path.join(args.data_dir, "img_left.png")
-    img = cv2.imread(img_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    os.environ['DISPLAY'] = args.display
 
-    depth_path = os.path.join(args.data_dir, "depth.npy")
-    depth_arr = np.load(depth_path)
-
+    # Get camera intrinsics
     intrinsics_path = os.path.join(os.path.dirname(args.data_dir.rstrip("/")), "cam_params.json")
     with open(intrinsics_path, "r") as f:
         intrinsics = json.load(f)
+
+    if args.depth_source == "tri":
+        fx = intrinsics["left"]["fx"]
+        CAM_BASELINE = 0.12 # Meters
+        # Get depth from TRI stereo to depth
+        right_img_path = os.path.join(args.data_dir, "img_right.png")
+        left_img_path = os.path.join(args.data_dir, "img_left.png")
+        
+        start_time = time.time() 
+        depth_arr, img = stereo_to_depth.get_depth_and_bgr(
+            left_img_path, right_img_path, fx, CAM_BASELINE
+        )
+        print("Depth computation time (s):", time.time() - start_time)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    else:
+        # Open img
+        img_path = os.path.join(args.data_dir, "img_left.png")
+        img = cv2.imread(img_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        depth_path = os.path.join(args.data_dir, "depth.npy")
+        depth_arr = np.load(depth_path)
+
+    # Check that depth shape matches img shape
+    assert img.shape[0] == depth_arr.shape[0] and img.shape[1] == depth_arr.shape[1]
+
 
     # Get mask for box
     mask = get_mask(img, viz=True)
@@ -50,13 +73,13 @@ def main(args):
     vis.destroy_window()
 
     # Save segmented pcd
-    seg_pcd_path = os.path.join(args.data_dir, "seg_pointcloud.ply")
+    seg_pcd_path = os.path.join(args.data_dir, f"seg_pointcloud_{args.depth_source}.ply")
     o3d.io.write_point_cloud(seg_pcd_path, pcd)
     # Save object mask
-    mask_path = os.path.join(args.data_dir, "mask.npy")
+    mask_path = os.path.join(args.data_dir, f"mask_{args.depth_source}.npy")
     np.save(mask_path, mask)
 
-    print("Saved mask and pointcloud")
+    print(f"Saved mask and pointcloud to {mask_path} and {seg_pcd_path}")
 
 
 
@@ -182,5 +205,20 @@ def show_box(box, ax):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", "-d", help="Data directory path")
+    parser.add_argument(
+        "--depth_source",
+        "-ds",
+        default="zed",
+        choices=["zed", "tri"],
+        help="Depth source to use"
+    )
+    parser.add_argument(
+        "--display",
+        type=str, 
+        default=":1",
+        choices=[":1", ":2", ":3"],
+        help="Display number"
+    )
     args = parser.parse_args()
     main(args)
+
